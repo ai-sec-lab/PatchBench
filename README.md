@@ -3,7 +3,7 @@
 [![ArXiv](https://img.shields.io/badge/arXiv-2609.04075-b31b1b?style=flat&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2609.04075)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-![PatchBench overview: a task's goal and sanitizer report go to an AI agent, which works in a Docker container holding the repository, build toolchain and PoC input; the agent's patch is then checked for both security and semantic correctness](data/assets/overview.jpg)
+![overview](data/assets/overview.jpg)
 
 ## Overview
 
