@@ -1,0 +1,28 @@
+[project]
+name = "patchbench"
+version = "0.1.0"
+description = "A repository-level benchmark for agentic vulnerability patching"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "alive-progress>=3.3.0",
+    "pandas>=2.3.3",
+]
+
+[project.optional-dependencies]
+# Claude Code runs on the host rather than inside the task image, so its
+# dependencies are an extra rather than part of the base install.
+claudecode = [
+    "claude-agent-sdk>=0.1.6",
+    "gitpython>=3.1.45",
+]
+
+[project.scripts]
+patchbench = "patchbench.cli.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["patchbench"]

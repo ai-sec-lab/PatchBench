@@ -1,0 +1,6 @@
+.venv/
+venv/
+__pycache__/
+out/
+corpus/
+corpus_outputs/
