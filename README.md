@@ -1,6 +1,7 @@
 # PatchBench: Evaluating AI Agents for Vulnerability Patching
 
 [![ArXiv](https://img.shields.io/badge/arXiv-2609.04075-b31b1b?style=flat&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2609.04075)
+[![HuggingFace](https://img.shields.io/badge/Hugging%20Face-Dataset-FFD21E?style=flat&logo=huggingface&logoColor=white)](https://huggingface.co/datasets/ai-sec-lab/PatchBench)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ![overview](data/assets/overview.jpg)
