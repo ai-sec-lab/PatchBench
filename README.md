@@ -39,11 +39,11 @@ This produces `data/corpus/` and `data/corpus_outputs/`, about 22 GB together.
 
 ### 2. Images
 
-Each task runs in its own build container, with one image published per task id. `pull_images.sh` pulls them in parallel.
+Each task runs in its own build container, with one image published per task id. `scripts/pull_images.sh` pulls them in parallel.
 
 ```bash
-./pull_images.sh                     # every id in metadata.json
-./pull_images.sh --jobs 8            # more parallelism (default 4)
+./scripts/pull_images.sh                     # every id in metadata.json
+./scripts/pull_images.sh --jobs 8            # more parallelism (default 4)
 ```
 
 Images are a few GB each, and all 213 come to roughly 870 GB, so pull only the ids you plan to run. Re-running the script retries anything that failed; layers already downloaded are skipped.

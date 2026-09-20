@@ -24,7 +24,7 @@ class OutputMatch(Stage):
 
     stage = "verify"
     result_keys = ("verify",)
-    timeout = 6000
+    timeout = 14400
     retries = 1
 
     #: Where the fuzz target writes its result when the CSV records no other path.

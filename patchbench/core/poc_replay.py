@@ -18,8 +18,8 @@ class PocReplay(Stage):
 
     stage = "poc"
     result_keys = ("poc",)
-    timeout = 6000
-    retries = 5
+    timeout = 14400
+    retries = 1
 
     def script_path(self, task: Task) -> Path:
         return self.paths.script_dir(self.stage, task.id) / f"{task.slug}.sh"

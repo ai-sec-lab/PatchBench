@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 # Pull the task images PatchBench evaluates in, in parallel.
 #
-#   ./pull_images.sh                     # all 213 vulnerable images
-#   ./pull_images.sh --jobs 8            # more parallelism
-#   ./pull_images.sh --ids "11351 42859" # just these tasks
-#   ./pull_images.sh --suffixes "vul fix"   # also the reference-patched images
+#   ./scripts/pull_images.sh              # all 213 vulnerable images
+#   ./scripts/pull_images.sh --jobs 8     # more parallelism
+#   ./scripts/pull_images.sh --ids "11351 42859"  # just these tasks
+#   ./scripts/pull_images.sh --suffixes "vul fix" # also the reference-patched images
 #
 # The images are large; the full set is on the order of a terabyte.
 
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-METADATA="$HERE/data/metadata.json"
+ROOT="$(cd "$HERE/.." && pwd)"
+METADATA="$ROOT/data/metadata.json"
 REPO="b4drequest/vulpatch"
 SUFFIXES="vul"
 IDS=""

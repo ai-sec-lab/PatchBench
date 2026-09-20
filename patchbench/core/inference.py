@@ -20,8 +20,8 @@ class Inference(Stage):
 
     stage = "infer"
     result_keys = ("patch",)
-    timeout = 14400
-    retries = 1
+    timeout = 28800
+    retries = 3
 
     #: Python the agent's toolchain is installed against, independent of the
     #: image's own interpreter.

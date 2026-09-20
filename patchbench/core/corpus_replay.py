@@ -23,8 +23,8 @@ class CorpusReplay(Stage):
 
     stage = "replay"
     result_keys = ("C1", "C2")
-    timeout = 7200
-    retries = 5
+    timeout = 14400
+    retries = 1
 
     def script_path(self, task: Task):
         """Location of the generated replay script for one task."""
