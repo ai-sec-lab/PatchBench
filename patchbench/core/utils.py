@@ -389,7 +389,7 @@ class ScriptRunner:
                     print(f"Truncated: {label}", flush=True)
                     stderr = b"Truncated\n" + stderr
 
-            if b"429 Too Many Requests" not in stderr:
+            if returncode == 0 or b"429 Too Many Requests" not in stderr:
                 break
             if attempt < self.retries - 1:
                 delay = self.retry_delay * (2 ** attempt) + random.uniform(0, 10)
