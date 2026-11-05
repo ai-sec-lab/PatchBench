@@ -11,8 +11,8 @@ from pathlib import Path
 from agent_base import AGENT_HOME, AgentHarness, AgentUnavailable, main
 from constants import MODEL_PRICING
 
-#: How often the rollout logs are re-read for a spend estimate.
-POLL_INTERVAL_SECONDS = 15
+#: How often the rollout logs are checked for newly written records.
+POLL_INTERVAL_SECONDS = 1
 #: How long codex gets to shut down cleanly when stopped at the budget.
 STOP_GRACE_SECONDS = 10
 
@@ -89,27 +89,37 @@ class CodexHarness(AgentHarness):
                     self._changed.update(paths)
 
     def _watch_spend(self, proc, stop: threading.Event) -> None:
-        """Price the latest token usage and kill codex at the budget."""
+        """Price each new token count in the rollout logs and kill codex at the budget.
+
+        Codex appends a ``token_count`` record after every model response, so
+        spend is checked each time it changes, as OpenHands reports it.
+        """
+        offsets: dict[str, int] = {}
+        totals: dict[str, dict] = {}
         while not stop.is_set() and proc.poll() is None:
-            usage = self._latest_token_usage()
-            if usage is None:
-                print("Conversation not started yet; usage $0", flush=True)
-            else:
-                p = self.pricing
-                uncached = usage["input_tokens"] - usage["cached_input_tokens"]
-                spend = (uncached * p["input"]
-                         + usage["cached_input_tokens"] * p["cached_input"]
-                         + usage["output_tokens"] * p["output"]) / 1e6
-                if self.note_spend(spend):
-                    if proc.poll() is None:
-                        proc.terminate()
-                        try:
-                            proc.wait(timeout=STOP_GRACE_SECONDS)
-                        except subprocess.TimeoutExpired:
-                            proc.kill()
-                    return
+            new = False
+            for path in self._rollout_paths():
+                for usage in self._new_token_usages(path, offsets):
+                    totals[path] = usage
+                    new = True
+            if new and self.note_spend(sum(map(self._price, totals.values()))):
+                if proc.poll() is None:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=STOP_GRACE_SECONDS)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                return
             if stop.wait(POLL_INTERVAL_SECONDS):
                 return
+
+    def _price(self, usage: dict) -> float:
+        """Dollar cost of one rollout's running token totals."""
+        p = self.pricing
+        uncached = usage["input_tokens"] - usage["cached_input_tokens"]
+        return (uncached * p["input"]
+                + usage["cached_input_tokens"] * p["cached_input"]
+                + usage["output_tokens"] * p["output"]) / 1e6
 
     # -- rollout logs -------------------------------------------------------
 
@@ -125,20 +135,27 @@ class CodexHarness(AgentHarness):
                                check=False, capture_output=True)
         return [p.decode("utf-8") for p in found.stdout.split(b"\0") if p]
 
-    def _latest_token_usage(self):
-        """The most recent ``token_count`` record from any rollout log."""
-        for path in self._rollout_paths():
-            with open(path, encoding="utf-8") as handle:
-                lines = handle.readlines()
-            for raw in reversed(lines):
-                raw = raw.strip()
-                if not raw:
-                    continue
-                record = json.loads(raw)
-                payload = record.get("payload", {})
-                if payload.get("type") == "token_count":
-                    return payload["info"]["total_token_usage"]
-        return None
+    @staticmethod
+    def _new_token_usages(path: str, offsets: dict[str, int]) -> list[dict]:
+        """Token totals from the records appended to ``path`` since it was last read.
+
+        Only complete lines are taken; one codex is still writing waits for the
+        next read.
+        """
+        with open(path, "rb") as handle:
+            handle.seek(offsets.get(path, 0))
+            data = handle.read()
+        complete = data[:data.rfind(b"\n") + 1]
+        offsets[path] = offsets.get(path, 0) + len(complete)
+        usages = []
+        for raw in complete.splitlines():
+            try:
+                payload = json.loads(raw).get("payload", {})
+            except json.JSONDecodeError:
+                continue
+            if payload.get("type") == "token_count" and payload.get("info"):
+                usages.append(payload["info"]["total_token_usage"])
+        return usages
 
     def _save_rollouts(self) -> None:
         """Copy the rollout logs into the log directory."""

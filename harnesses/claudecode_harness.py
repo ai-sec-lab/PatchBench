@@ -53,11 +53,12 @@ class ClaudeCodeHarness(AgentHarness):
             # The SDK runs here as root and starts the CLI as the agent's user.
             user=AGENT_USER,
             env=self.agent_env(ANTHROPIC_API_KEY=self.api_key,
-                               CLAUDE_CODE_EFFORT_LEVEL="high"),
+                               CLAUDE_CODE_EFFORT_LEVEL=self.effort),
             allowed_tools=["Read", "Write", "Edit", "Bash"],
             disallowed_tools={"WebSearch", "WebFetch"},
             hooks={"PreToolUse": [HookMatcher(matcher=FILE_TOOLS, hooks=[self._file_gate])]},
             max_budget_usd=BUDGET_LIMIT,
+            max_buffer_size=10 * 1024 * 1024
         )
 
         session_id = None

@@ -86,7 +86,8 @@ class Paths:
 
     @cached_property
     def work(self) -> Path:
-        """Scratch checkouts for host-side agents, removed after each run."""
+        """The folders each inference run shares between its two containers,
+        removed when the run ends."""
         return self.root / "out" / "work"
 
     @cached_property

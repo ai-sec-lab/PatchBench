@@ -95,6 +95,7 @@ Optional flags:
   - For `infer`: Ignore already inferred tasks (i.e., under `./out/diffs`) for a configuration. Without it, it will still run the inference for the specified agent configuration against the remaining tasks.
   - For validation: Ignore the whole validation process for a configuration. Without it, a validation stage only re-derives verdicts from a previous run's saved output, which makes changing a parser cheap. Therefore, for a brand new run, you need to set this flag
 - `--no-setup` reuses the previously generated scripts, and is off by default
+- `--effort LEVEL` (`infer` only) sets Claude Code's effort level: `low`, `medium`, `high`, `xhigh` (the default) or `max`. OpenHands and Codex keep their own `medium`. It is not part of the generated names, so give runs at different levels their own `--tag`
 
 `analyze` takes no flags, because the reports record which tasks and configurations ran.
 

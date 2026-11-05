@@ -1,4 +1,5 @@
 model_provider = "openai"
+openai_base_url = "https://us.api.openai.com/v1"   # temporary: this API key is for the US region; remove before merging
 web_search = "disabled"
 
 [model_providers.openai-us]
