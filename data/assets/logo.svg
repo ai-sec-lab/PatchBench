@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <style>
+    .edge { fill: none; stroke: #0d0f14; stroke-width: 2.2; stroke-linejoin: round; }
+    .patch { fill: #4032c8; }
+    @media (prefers-color-scheme: dark) {
+      .edge { stroke: #eef0f5; }
+      .patch { fill: #aaa2ff; }
+    }
+  </style>
+  <path class="edge" d="M11 21H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v5H11z"/>
+  <rect class="patch" x="13.5" y="13.5" width="8.5" height="8.5" rx="2.5"/>
+</svg>
