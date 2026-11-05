@@ -21,7 +21,7 @@ from datetime import datetime
 from itertools import product
 from multiprocessing import Pool
 from pathlib import Path
-from typing import Any, ClassVar, Iterator, Sequence
+from typing import Any, BinaryIO, ClassVar, Iterator, Sequence
 
 from alive_progress import alive_bar
 
@@ -323,8 +323,13 @@ class ScriptRunner:
         self.retries = retries
         self.retry_delay = retry_delay
 
-    def capture(self, proc: subprocess.Popen) -> tuple[bytes, bytes, bool, bool]:
-        """Drain both streams until exit, timeout, or the size cap."""
+    def capture(self, proc: subprocess.Popen,
+                live_dir: Path | None = None) -> tuple[bytes, bytes, bool, bool]:
+        """Drain both streams until exit, timeout, or the size cap.
+
+        With ``live_dir``, what is kept is also written to ``stdout.txt`` and
+        ``stderr.txt`` there as it arrives, so a run can be followed on disk.
+        """
         selector = selectors.DefaultSelector()
         chunks = {"stdout": [], "stderr": []}
         totals = {"stdout": 0, "stderr": 0}
@@ -334,22 +339,35 @@ class ScriptRunner:
         for stream in streams:
             selector.register(stream, selectors.EVENT_READ)
 
+        live = self._open_live(live_dir)
         start = time.time()
         elapsed = 0.0
-        while selector.get_map() and elapsed < self.timeout and not all(capped.values()):
-            for key, _ in selector.select(timeout=1):
-                data = key.fileobj.read1(4096)
-                if not data:
-                    selector.unregister(key.fileobj)
-                    continue
-                which = streams[key.fileobj]
-                room = self.MAX_STREAM_BYTES - totals[which]
-                if room > 0:
-                    chunk = data[:room]
-                    chunks[which].append(chunk)
-                    totals[which] += len(chunk)
-                capped[which] = totals[which] >= self.MAX_STREAM_BYTES
-            elapsed = time.time() - start
+        try:
+            while selector.get_map() and elapsed < self.timeout and not all(capped.values()):
+                for key, _ in selector.select(timeout=1):
+                    data = key.fileobj.read1(4096)
+                    if not data:
+                        selector.unregister(key.fileobj)
+                        continue
+                    which = streams[key.fileobj]
+                    room = self.MAX_STREAM_BYTES - totals[which]
+                    if room > 0:
+                        chunk = data[:room]
+                        chunks[which].append(chunk)
+                        totals[which] += len(chunk)
+                        if which in live:
+                            try:
+                                live[which].write(chunk)
+                                live[which].flush()
+                            except OSError as exc:
+                                # The run goes on; only the live copy stops.
+                                print(f"Live {which} log stopped: {exc}", flush=True)
+                                live.pop(which).close()
+                    capped[which] = totals[which] >= self.MAX_STREAM_BYTES
+                elapsed = time.time() - start
+        finally:
+            for handle in live.values():
+                handle.close()
 
         if proc.poll() is None:
             proc.terminate()
@@ -373,10 +391,34 @@ class ScriptRunner:
             all(capped.values()),
         )
 
-    def run(self, cmd: Sequence[str], containers: str | Sequence[str], label: str = "") -> ProcOutput:
+    @staticmethod
+    def _open_live(live_dir: Path | None) -> dict[str, BinaryIO]:
+        """``stdout.txt`` and ``stderr.txt`` in ``live_dir``, emptied for this run.
+
+        None are opened when there is no ``live_dir`` or it cannot be written:
+        a run never fails for want of its live log.
+        """
+        if live_dir is None:
+            return {}
+        files: dict[str, BinaryIO] = {}
+        try:
+            live_dir.mkdir(parents=True, exist_ok=True)
+            for which in ("stdout", "stderr"):
+                files[which] = (live_dir / f"{which}.txt").open("wb")
+        except OSError as exc:
+            for handle in files.values():
+                handle.close()
+            print(f"Live log unavailable in {live_dir}: {exc}", flush=True)
+            return {}
+        return files
+
+    def run(self, cmd: Sequence[str], containers: str | Sequence[str], label: str = "",
+            live_dir: Path | None = None) -> ProcOutput:
         """Execute one script, retrying only on upstream rate limiting.
 
         ``containers`` names what the script starts, removed afterwards.
+        ``live_dir`` is passed to :meth:`capture`; each attempt starts its
+        live log afresh, as only the last attempt's output is kept.
         """
         stdout = stderr = b""
         returncode = -1
@@ -388,7 +430,7 @@ class ScriptRunner:
                 stderr=subprocess.PIPE,
                 stdin=subprocess.PIPE,
             )
-            stdout, stderr, timed_out, filled_up = self.capture(proc)
+            stdout, stderr, timed_out, filled_up = self.capture(proc, live_dir)
             returncode = proc.returncode
 
             if timed_out or filled_up:
@@ -560,6 +602,9 @@ class Stage(ABC):
     timeout: int = 3000
     #: Attempts per script. Only upstream rate limiting triggers a retry.
     retries: int = 1
+    #: Write stdout and stderr into the run's log directory while it runs,
+    #: rather than only once it has ended.
+    live_output: bool = False
 
     def __init__(self, paths: Paths = PATHS) -> None:
         self.paths = paths
@@ -586,9 +631,13 @@ class Stage(ABC):
     def jobs_for(self, task: Task) -> list[Job]:
         """The scripts to execute for this task, skipping any not written."""
 
-    @abstractmethod
     def parse(self, task: Task, result_key: str, proc: ProcOutput) -> Any:
-        """Derive this task's verdict for one result key."""
+        """Derive this task's verdict for one result key.
+
+        Called by :meth:`run`. A stage that replaces ``run`` (inference) has
+        no use for it.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not parse container output")
 
     def split(self, job: Job, proc: ProcOutput) -> dict[str, ProcOutput]:
         """Map one completed run onto result keys. One-to-one by default."""
@@ -630,7 +679,8 @@ class Stage(ABC):
         name = self.container_name(job.task)
         print(f"[{self.stage}] running {name}", flush=True)
         runner = ScriptRunner(timeout=self.timeout, retries=self.retries)
-        proc = runner.run(job.command, self.containers_of(job.task), name)
+        live_dir = self.run_dir(job.task, job.label) if self.live_output else None
+        proc = runner.run(job.command, self.containers_of(job.task), name, live_dir=live_dir)
         for result_key, part in self.split(job, proc).items():
             part.save(self.run_dir(job.task, result_key))
         print(f"[{self.stage}] finished {name}", flush=True)

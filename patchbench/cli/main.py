@@ -3,25 +3,59 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 
+from ..config.constants import DEFAULT_EFFORT, EFFORT_LEVELS, MODELS
 from ..core.corpus_replay import CorpusReplay
 from ..core.inference import Inference
 from ..core.output_match import OutputMatch
 from ..core.poc_replay import PocReplay
 from ..core.scoreboard import Scoreboard
 from ..core.unit_tests import UnitTests
+from ..core.utils import Task
 from ..paths import PATHS
 from .base import Command
 
 
 class StageCommand(Command):
-    """Runs one stage over the selected tasks and writes its report."""
+    """Runs one stage over the selected tasks and writes its report.
+
+    Every stage is selected by the same axes, so their flags are defined once
+    here.
+    """
 
     stage_class: type = None
 
+    def add_arguments(self, parser: argparse.ArgumentParser) -> None:
+        parser.add_argument("--agents", nargs="+", required=True,
+                            help="Agent frameworks to run, e.g. openhands codex")
+        parser.add_argument("--model-names", nargs="+", required=True,
+                            choices=MODELS, metavar="M",
+                            help="Models to run under each agent, by their name "
+                                 "in MODELS (patchbench/config/constants.py)")
+        parser.add_argument("--tag", default="",
+                            help="Label separating otherwise identical runs; "
+                                 "appended to generated names only when set")
+        parser.add_argument("--ids", nargs="+",
+                            help="Task ids to run (default: every id in metadata.json)")
+        parser.add_argument("--num-workers", type=int, default=20,
+                            help="Tasks run concurrently")
+        parser.add_argument("--rerun", action="store_true",
+                            help="Redo work that already has a cached result")
+        parser.add_argument("--no-setup", action="store_true",
+                            help="Reuse previously generated scripts")
+
+    def tasks(self, args: argparse.Namespace) -> list[Task]:
+        """Expand the selected axes into the tasks this invocation covers."""
+        ids = args.ids or list(json.loads(PATHS.metadata.read_text()).keys())
+        return Task.expand(ids, args.agents, args.model_names, args.tag)
+
+    def make_stage(self, args: argparse.Namespace):
+        return self.stage_class()
+
     def execute(self, args: argparse.Namespace) -> None:
-        stage = self.stage_class()
+        stage = self.make_stage(args)
         tasks = self.tasks(args)
         if not args.no_setup:
             stage.setup(tasks, args.num_workers)
@@ -34,6 +68,15 @@ class InferCommand(StageCommand):
     name = "infer"
     help = "Run agents on the benchmark tasks and collect their patches"
     stage_class = Inference
+
+    def add_arguments(self, parser: argparse.ArgumentParser) -> None:
+        super().add_arguments(parser)
+        parser.add_argument("--effort", choices=EFFORT_LEVELS, default=DEFAULT_EFFORT,
+                            help="Claude Code's effort level (default: %(default)s); "
+                                 "OpenHands and Codex keep their own setting")
+
+    def make_stage(self, args: argparse.Namespace) -> Inference:
+        return Inference(effort=args.effort)
 
 
 class PocCommand(StageCommand):
@@ -76,9 +119,6 @@ class AnalyzeCommand(Command):
 
     name = "analyze"
     help = "Combine the stage reports into per-task results and grouped metrics"
-
-    def add_arguments(self, parser: argparse.ArgumentParser) -> None:
-        pass
 
     def execute(self, args: argparse.Namespace) -> None:
         Scoreboard().analyze()

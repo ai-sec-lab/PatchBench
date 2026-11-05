@@ -15,13 +15,14 @@ from pathlib import Path
 
 from git import Repo
 
-from constants import (C_CPP_EXTENSIONS, NO_BROWSER_FLAG, NO_BROWSER_PROMPT,
-                       PROMPT)
+from constants import (C_CPP_EXTENSIONS, DEFAULT_EFFORT, EFFORT_LEVELS,
+                       NO_BROWSER_FLAG, NO_BROWSER_PROMPT, PROMPT)
 
 #: Dollar budget for one run. The agent is stopped once spend crosses this.
-BUDGET_LIMIT = 30
+BUDGET_LIMIT = 50
 #: A diff snapshot is written each time spend crosses a multiple of this.
-COST_STEP = 5
+#: None turns snapshots off.
+COST_STEP = None
 
 #: The unprivileged user the agent program runs as (see agent/Dockerfile).
 AGENT_USER = "agent"
@@ -55,9 +56,11 @@ class AgentHarness(ABC):
     name: str = ""
 
     def __init__(self, model_name: str, task_id: str, repo_folder: str,
-                 out_base: str, log_dir: str) -> None:
+                 out_base: str, log_dir: str, effort: str = DEFAULT_EFFORT) -> None:
         self.model_name = model_name
         self.task_id = task_id
+        #: Effort level for agents that take one (Claude Code).
+        self.effort = effort
         self.repo_folder = os.path.abspath(repo_folder)
         self.out_base = out_base
         self.log_dir = Path(log_dir)
@@ -70,7 +73,8 @@ class AgentHarness(ABC):
         self.repo: Repo | None = None
         self.mask_id = ""
         self.budget_exhausted = False
-        self._thresholds = list(range(COST_STEP, BUDGET_LIMIT + 1, COST_STEP))
+        self._thresholds = (list(range(COST_STEP, BUDGET_LIMIT + 1, COST_STEP))
+                            if COST_STEP else [])
         self._next_threshold = 0
 
     # -- agent interface ----------------------------------------------------
@@ -261,7 +265,7 @@ class AgentHarness(ABC):
     # -- budget -------------------------------------------------------------
 
     def note_spend(self, spend: float) -> bool:
-        """Record spend, writing a snapshot per threshold crossed.
+        """Record spend, writing a snapshot per threshold crossed (if ``COST_STEP`` is set).
 
         Returns True once ``BUDGET_LIMIT`` is reached. Stopping is left to the
         caller, because each agent is interrupted differently.
@@ -269,11 +273,10 @@ class AgentHarness(ABC):
         print(f"[{self.name}] spend ${spend:.4f} / ${BUDGET_LIMIT:.2f}", flush=True)
         while (self._next_threshold < len(self._thresholds)
                and spend >= self._thresholds[self._next_threshold]):
-            threshold = self._thresholds[self._next_threshold]
-            self.snapshot(threshold)
+            self.snapshot(self._thresholds[self._next_threshold])
             self._next_threshold += 1
-            if threshold >= BUDGET_LIMIT:
-                self.budget_exhausted = True
+        if spend >= BUDGET_LIMIT:
+            self.budget_exhausted = True
         return self.budget_exhausted
 
     def snapshot(self, threshold: int) -> None:
@@ -311,6 +314,7 @@ def main(harness_cls: type[AgentHarness]) -> None:
     parser.add_argument("--repo-folder", required=True)
     parser.add_argument("--out-base", required=True)
     parser.add_argument("--log-dir", default=None)
+    parser.add_argument("--effort", choices=EFFORT_LEVELS, default=DEFAULT_EFFORT)
     args = parser.parse_args()
 
     if not args.task_id:
@@ -322,6 +326,7 @@ def main(harness_cls: type[AgentHarness]) -> None:
         repo_folder=args.repo_folder,
         out_base=args.out_base,
         log_dir=args.log_dir or f"/logs/{harness_cls.name}",
+        effort=args.effort,
     )
     diff, budget_exhausted = harness.run()
     if diff is not None:

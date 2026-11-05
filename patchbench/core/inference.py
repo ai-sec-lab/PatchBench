@@ -24,9 +24,9 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from ..config.constants import AGENT_API_KEYS, MODEL_API_KEYS, MODELS
+from ..config.constants import AGENT_API_KEYS, DEFAULT_EFFORT, MODEL_API_KEYS, MODELS
 from ..paths import PATHS, Paths
-from .utils import Job, ProcOutput, Stage, Task
+from .utils import Job, Stage, Task
 
 
 class Inference(Stage):
@@ -36,6 +36,7 @@ class Inference(Stage):
     result_keys = ("patch",)
     timeout = 28800
     retries = 3
+    live_output = True
 
     #: Image an agent lives in, one per agent, all built from
     #: ``agent/Dockerfile`` with ``--build-arg AGENT=<name>``. Built on first use
@@ -64,9 +65,11 @@ class Inference(Stage):
         "claudecode": ("/opt/agent/lib/python3.12/site-packages/claude_agent_sdk/_bundled/claude",),
     }
 
-    def __init__(self, paths: Paths = PATHS, rerun: bool = False) -> None:
+    def __init__(self, paths: Paths = PATHS, rerun: bool = False,
+                 effort: str = DEFAULT_EFFORT) -> None:
         super().__init__(paths)
         self.rerun = rerun
+        self.effort = effort
 
     # -- paths --------------------------------------------------------------
 
@@ -153,20 +156,28 @@ class Inference(Stage):
             f'{" ".join(self.SHARED_DIRS)} >/dev/null 2>&1 || true\n'
             '  docker rm -f "$TASK_CONTAINER" "$AGENT_CONTAINER" >/dev/null 2>&1 || true\n'
             "}\n"
-            "trap cleanup EXIT\n"
-            "cleanup\n"
-            # A previous run may have been interrupted before it could clean up,
-            # possibly leaving files the host user cannot delete; those are
-            # removed from inside a throwaway container. Guarded because this
-            # is the one destructive step in the script.
-            'case "$WORK" in\n'
-            '  */out/work/*)\n'
-            '    rm -rf "$WORK" 2>/dev/null || {\n'
-            '      docker run --rm -v "$WORK:/work" --entrypoint /bin/rm "$TASK_IMAGE" '
+            # The shared folders are only needed while the run lasts: by its end
+            # the patch is in /diff and the agent's logs in its log directory.
+            # Files the host user cannot delete (a run killed before cleanup
+            # could hand them back) are removed from inside a throwaway
+            # container. Guarded because this is the one destructive step in the
+            # script; it returns rather than exits, so the exit trap keeps the
+            # agent's status.
+            "clear_work() {\n"
+            '  case "$WORK" in\n'
+            '    */out/work/*) ;;\n'
+            '    *) echo "refusing to clear $WORK" >&2; return 1 ;;\n'
+            "  esac\n"
+            '  rm -rf "$WORK" 2>/dev/null || {\n'
+            '    docker run --rm -v "$WORK:/work" --entrypoint /bin/rm "$TASK_IMAGE" '
             f'-rf {" ".join("/work" + d for d in self.SHARED_DIRS)} >/dev/null 2>&1\n'
-            '      rm -rf "$WORK"; } ;;\n'
-            '  *) echo "refusing to clear $WORK" >&2; exit 1 ;;\n'
-            "esac\n"
+            '    rm -rf "$WORK"; }\n'
+            '  rmdir "${WORK%/*}" 2>/dev/null || true\n'
+            "}\n"
+            "trap 'cleanup; clear_work' EXIT\n"
+            "cleanup\n"
+            # A previous run may have been killed before its exit trap ran.
+            "clear_work || exit 1\n"
             'mkdir -p "$WORK"\n'
             'REPO=$(docker run --rm --entrypoint /bin/sh "$TASK_IMAGE" -c '
             "\"find /src -maxdepth 3 -type d -iname '$PROJECT' | head -n 1\")\n"
@@ -240,6 +251,7 @@ class Inference(Stage):
             f'    --task-id {task.id} \\\n'
             '    --repo-folder "$REPO" \\\n'
             f'    --out-base /diff/{task.slug} \\\n'
+            f'    --effort {self.effort} \\\n'
             f'    --log-dir /logs/{task.agent}\n'
             # Carried to the end, so the collect step's cleanup cannot mask a
             # failed agent behind a zero exit status.
@@ -313,7 +325,3 @@ class Inference(Stage):
         diff = self.diff_path(task)
         size = diff.stat().st_size if diff.is_file() else 0
         results[task] = {"patch": {"produced": size > 0, "bytes": size}}
-
-    def parse(self, task: Task, result_key: str, proc: ProcOutput) -> Any:
-        """Unused: the verdict comes from the patch on disk, not the container log."""
-        return {"produced": self.diff_path(task).is_file()}

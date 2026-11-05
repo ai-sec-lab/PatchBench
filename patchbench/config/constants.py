@@ -69,13 +69,13 @@ MODEL_PRICING = {
     },
     "claude-opus-4-6": {
         "input": 5,
-        "cached_input": 0.50, 
+        "cached_input": 0.50,
         "cache_write": 6.25,
         "output": 25
     },
     "claude-opus-4-8": {
         "input": 5,
-        "cached_input": 0.50, 
+        "cached_input": 0.50,
         "cache_write": 6.25,
         "output": 25
     },
@@ -98,7 +98,13 @@ MODEL_PRICING = {
         "input": 6.5,
         "cached_input": 1.1,
         "output": 27
-    }
+    },
+    "claude-opus-5-5": {
+        "input": 4, 
+        "cached_input": 0.20, 
+        "cache_write": 5.00, 
+        "output": 20
+    },
 }
 
 C_CPP_EXTENSIONS = {
@@ -137,7 +143,8 @@ CLAUDE_MODELS = [
     'claude-sonnet-4-20250514',
     'claude-sonnet-4-6',
     'claude-opus-4-6',
-    'claude-opus-4-8'
+    'claude-opus-4-8',
+    'claude-opus-5-5',
 ]
 
 GEMINI_NO_REASONING_MODELS = [
@@ -165,10 +172,15 @@ MODEL_API_KEYS = {
 # the one of its model's provider (MODEL_API_KEYS).
 AGENT_API_KEYS = {"claudecode": "ANTHROPIC_API_KEY", "codex": "OPENAI_API_KEY"}
 
+# Effort levels Claude Code accepts (CLAUDE_CODE_EFFORT_LEVEL), chosen with
+# `patchbench infer --effort`. OpenHands and Codex keep their own setting.
+EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"]
+DEFAULT_EFFORT = "xhigh"
+
 MODELS = {
     # kimi
     "kimi-k2.6": "kimi-k2.6",
-    
+
     # openai
     'gpt-5': 'gpt-5-2025-08-07',
     'gpt-4.1': 'gpt-4.1-2025-04-14',
@@ -185,8 +197,9 @@ MODELS = {
     'gpt-5.3-codex': 'gpt-5.3-codex',
     'gpt-5.5': 'gpt-5.5-2026-04-23',
     'gpt-5.6-sol': 'gpt-5.6-sol',
-    
+
     # claude
+    'claude-opus-5-5': 'claude-opus-5-5',
     'claude-opus-4-8': 'claude-opus-4-8',
     'claude-opus-4-6': 'claude-opus-4-6',
     'claude-sonnet-4-6': 'claude-sonnet-4-6',
