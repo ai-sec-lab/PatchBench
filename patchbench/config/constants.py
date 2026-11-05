@@ -168,12 +168,8 @@ MODEL_API_KEYS = {
     **dict.fromkeys(GEMINI_NO_REASONING_MODELS + GEMINI_REASONING_MODELS, "GEMINI_API_KEY"),
 }
 
-# The API key each agent reads. OpenHands serves several providers, so it reads
-# the one of its model's provider (MODEL_API_KEYS).
 AGENT_API_KEYS = {"claudecode": "ANTHROPIC_API_KEY", "codex": "OPENAI_API_KEY"}
 
-# Effort levels Claude Code accepts (CLAUDE_CODE_EFFORT_LEVEL), chosen with
-# `patchbench infer --effort`. OpenHands and Codex keep their own setting.
 EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"]
 DEFAULT_EFFORT = "xhigh"
 

@@ -58,6 +58,7 @@ class ClaudeCodeHarness(AgentHarness):
             disallowed_tools={"WebSearch", "WebFetch"},
             hooks={"PreToolUse": [HookMatcher(matcher=FILE_TOOLS, hooks=[self._file_gate])]},
             max_budget_usd=BUDGET_LIMIT,
+            max_buffer_size=10 * 1024 * 1024
         )
 
         session_id = None
